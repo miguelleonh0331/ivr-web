@@ -57,14 +57,14 @@ class ConversationEngine {
         } elseif (in_array('ask_rates', $analysis['intents'], true)) {
             $state['stage'] = 'informing';
             $reply = !empty($state['loan']['amount']) ? $this->simulateLoan($state) : $this->answerRates($state);
+        } elseif ($this->isRecommendedCardSelection($state, $analysis, $message)) {
+            $reply = $this->selectCard($state, $analysis['entities']['card']);
         } elseif ($this->isShortTopicSelection($message, $analysis)) {
             $state['stage'] = 'discovery';
             $reply = $this->nextDiscoveryQuestion($state);
         } elseif (in_array('ask_fees', $analysis['intents'], true) || in_array('ask_product', $analysis['intents'], true)) {
             $state['stage'] = 'informing';
             $reply = $this->answerFromKnowledge($message, $state);
-        } elseif ($this->isRecommendedCardSelection($state, $analysis, $message)) {
-            $reply = $this->selectCard($state, $analysis['entities']['card']);
         } elseif (in_array('objection', $analysis['intents'], true)) {
             $state['objections']++;
             $state['stage'] = 'discovery';
