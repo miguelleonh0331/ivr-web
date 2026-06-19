@@ -40,6 +40,18 @@ assertTrue(strpos($loan['response'], '6 meses') !== false, 'Debe ofrecer plazos 
 $loanTerm = $engine->reply($loanSession, '12 meses');
 assertTrue(strpos($loanTerm['response'], '12 meses:') !== false, 'Debe calcular la cuota del plazo solicitado.');
 
+$infoSession = 'info_' . uniqid('', true);
+$engine->reply($infoSession, 'viajes');
+$engine->reply($infoSession, 'por placer');
+$info = $engine->reply($infoSession, 'informame sobre platinum');
+assertTrue($info['state']['stage'] === 'informing', 'Una consulta sobre Platinum no debe iniciar solicitud.');
+assertTrue(!$info['state']['application_progress']['card'], 'Mencionar Platinum no debe seleccionarla automaticamente.');
+
+$engine->reply($infoSession, 'comparalo');
+$engine->reply($infoSession, 'gold');
+$infoAfterSelection = $engine->reply($infoSession, 'si dame informacion');
+assertTrue($infoAfterSelection['state']['stage'] === 'informing', 'Una pregunta con si no debe pedir DNI.');
+
 $third = $engine->reply($sessionId, 'no me interesa');
 assertTrue($third['state']['stage'] === 'closed', 'Debe cerrar ante rechazo firme.');
 
