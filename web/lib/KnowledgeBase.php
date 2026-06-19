@@ -35,8 +35,10 @@ class KnowledgeBase {
     public function rateSummary(): ?string {
         $file = $this->path . '/tasas.md';
         if (!is_file($file)) return null;
+        $content = (string) file_get_contents($file);
+        $teaSection = preg_split('/^### TEM/m', $content)[0];
         $rows = [];
-        foreach (preg_split('/\R/', (string) file_get_contents($file)) ?: [] as $line) {
+        foreach (preg_split('/\R/', $teaSection) ?: [] as $line) {
             if (preg_match('/\|\s*\*\*(Classic|Gold|Platinum|Black)\*\*\s*\|\s*([0-9.]+%)\s*\|\s*([0-9.]+%)/i', $line, $m)) {
                 $rows[] = $m[1] . ' ' . $m[2] . ' en compras y ' . $m[3] . ' en retiro';
             }
@@ -45,7 +47,9 @@ class KnowledgeBase {
     }
 
     public function readableExcerpt(array $result, int $max = 360): string {
-        $text = preg_replace('/^#{1,3}\s+/m', '', $result['text']);
+        $lines = preg_split('/\R/', trim($result['text'])) ?: [];
+        array_shift($lines);
+        $text = preg_replace('/^#{1,3}\s+/m', '', implode("\n", $lines));
         $text = preg_replace('/\*\*/', '', $text);
         $text = preg_replace('/\|[-| ]+\|/', '', $text);
         $text = preg_replace('/\s+/', ' ', trim($text));
