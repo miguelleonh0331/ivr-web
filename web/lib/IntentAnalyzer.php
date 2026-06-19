@@ -5,12 +5,14 @@ class IntentAnalyzer {
     public function analyze(string $message): array {
         $text = $this->normalize($message);
         $local = $this->localAnalysis($text);
-        $remote = $this->analyzeWithGroq($message);
+        $local['provider'] = 'local';
+        $remote = $this->analyzeWithKimi($message);
 
         if (is_array($remote)) {
-            $local['intents'] = array_values(array_unique(array_merge($local['intents'], $remote['intents'] ?? [])));
-            $local['entities'] = array_merge($local['entities'], $remote['entities'] ?? []);
+            $local['intents'] = array_values(array_unique(array_merge($local['intents'], $this->allowedIntents($remote['intents'] ?? []))));
+            $local['entities'] = array_merge($local['entities'], $this->allowedEntities($remote['entities'] ?? []));
             $local['sentiment'] = $remote['sentiment'] ?? $local['sentiment'];
+            $local['provider'] = 'kimi';
         }
         return $local;
     }
@@ -42,19 +44,44 @@ class IntentAnalyzer {
         return ['intents' => $intents, 'entities' => $entities, 'sentiment' => in_array('reject_firm', $intents, true) ? 'negative' : 'neutral'];
     }
 
-    private function analyzeWithGroq(string $message): ?array {
-        $apiKey = getenv('GROQ_API_KEY');
+    private function analyzeWithKimi(string $message): ?array {
+        $apiKey = $this->kimiApiKey();
         if (!$apiKey || !function_exists('curl_init')) return null;
 
         $safeMessage = preg_replace(['/\b\d{8}\b/', '/\b9\d{8}\b/', '/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i'], ['[DNI]', '[CELULAR]', '[EMAIL]'], $message);
-        $prompt = 'Clasifica el mensaje de un cliente de tarjetas. Devuelve JSON estricto con intents (array), entities (objeto) y sentiment. Intents permitidos: ask_rates, ask_fees, ask_product, start_application, request_human, objection, reject_firm, general. Extrae interest (travel, restaurants, savings), travel_purpose (pleasure, work) y card cuando existan. Mensaje: ' . $safeMessage;
-        $payload = ['model' => 'llama-3.1-8b-instant', 'messages' => [['role' => 'system', 'content' => 'Responde solo JSON valido.'], ['role' => 'user', 'content' => $prompt]], 'temperature' => 0.1, 'response_format' => ['type' => 'json_object']];
-        $curl = curl_init('https://api.groq.com/openai/v1/chat/completions');
-        curl_setopt_array($curl, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode($payload), CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8, CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . $apiKey]]);
+        $prompt = 'Clasifica el mensaje de un cliente de tarjetas en espanol. Devuelve SOLO JSON valido con intents (array), entities (objeto) y sentiment. Intents permitidos: ask_rates, ask_fees, ask_product, compare_options, start_application, request_human, objection, reject_firm, affirm, deny, general. Entities permitidas: interest (travel, restaurants, savings), travel_purpose (pleasure, work), card (Classic, Gold, Platinum, Black). No inventes entidades. Mensaje: ' . $safeMessage;
+        $payload = ['model' => 'kimi-for-coding', 'max_tokens' => 240, 'temperature' => 0, 'system' => 'Responde solo JSON valido, sin markdown ni explicaciones.', 'messages' => [['role' => 'user', 'content' => $prompt]]];
+        $curl = curl_init('https://api.kimi.com/coding/v1/messages');
+        curl_setopt_array($curl, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode($payload), CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8, CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'x-api-key: ' . $apiKey, 'anthropic-version: 2023-06-01']]);
         $raw = curl_exec($curl);
         curl_close($curl);
         $data = json_decode((string) $raw, true);
-        return isset($data['choices'][0]['message']['content']) ? json_decode($data['choices'][0]['message']['content'], true) : null;
+        $content = $data['content'][0]['text'] ?? '';
+        if (preg_match('/\{.*\}/s', $content, $match)) $content = $match[0];
+        return $content ? json_decode($content, true) : null;
+    }
+
+    private function kimiApiKey(): ?string {
+        $fromEnv = getenv('KIMI_API_KEY');
+        if ($fromEnv) return $fromEnv;
+        $configPath = '/etc/ivr-web/kimi.php';
+        if (!is_file($configPath)) return null;
+        $config = include $configPath;
+        return is_array($config) && !empty($config['api_key']) ? (string) $config['api_key'] : null;
+    }
+
+    private function allowedIntents($intents): array {
+        $allowed = ['ask_rates', 'ask_fees', 'ask_product', 'compare_options', 'start_application', 'request_human', 'objection', 'reject_firm', 'affirm', 'deny', 'general'];
+        return is_array($intents) ? array_values(array_intersect($intents, $allowed)) : [];
+    }
+
+    private function allowedEntities($entities): array {
+        if (!is_array($entities)) return [];
+        $clean = [];
+        if (in_array($entities['interest'] ?? null, ['travel', 'restaurants', 'savings'], true)) $clean['interest'] = $entities['interest'];
+        if (in_array($entities['travel_purpose'] ?? null, ['pleasure', 'work'], true)) $clean['travel_purpose'] = $entities['travel_purpose'];
+        if (in_array($entities['card'] ?? null, ['Classic', 'Gold', 'Platinum', 'Black'], true)) $clean['card'] = $entities['card'];
+        return $clean;
     }
 
     private function normalize(string $value): string {

@@ -70,7 +70,7 @@ class ConversationEngine {
         $state['summary'] = $this->summary($state);
         file_put_contents($file, json_encode($state, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), LOCK_EX);
 
-        return ['response' => $reply, 'state' => $this->publicState($state), 'analysis' => ['intents' => $analysis['intents'], 'entities' => $analysis['entities']]];
+        return ['response' => $reply, 'state' => $this->publicState($state), 'analysis' => ['intents' => $analysis['intents'], 'entities' => $analysis['entities'], 'provider' => $analysis['provider']]];
     }
 
     private function load(string $file): array {
