@@ -7,16 +7,17 @@
   <style>
     :root { --ink:#10203d; --navy:#17294c; --panel:#f7f4ee; --accent:#dd3f5c; --muted:#6e7787; --line:#dfe3e9; }
     * { box-sizing:border-box; }
-    body { margin:0; min-height:100dvh; background:radial-gradient(circle at top right,#efd4c4 0,transparent 34%),linear-gradient(145deg,#17294c,#0f1b34); color:var(--ink); font-family:Georgia,'Times New Roman',serif; }
-    .app { width:min(100%,980px); min-height:100dvh; margin:auto; display:grid; grid-template-columns:minmax(0,1fr) 250px; background:var(--panel); box-shadow:0 18px 60px #07112777; }
-    .chat { min-height:100dvh; display:grid; grid-template-rows:auto minmax(0,1fr) auto; }
+    html, body { height:100%; }
+    body { margin:0; height:100dvh; overflow:hidden; background:radial-gradient(circle at top right,#efd4c4 0,transparent 34%),linear-gradient(145deg,#17294c,#0f1b34); color:var(--ink); font-family:Georgia,'Times New Roman',serif; }
+    .app { width:min(100%,980px); height:100dvh; margin:auto; display:grid; grid-template-columns:minmax(0,1fr) 250px; overflow:hidden; background:var(--panel); box-shadow:0 18px 60px #07112777; }
+    .chat { min-height:0; height:100%; display:grid; grid-template-rows:auto minmax(0,1fr) auto; }
     .top { padding:20px 24px 16px; background:var(--navy); color:#fff; display:flex; gap:14px; align-items:center; justify-content:space-between; }
     .eyebrow { margin:0 0 4px; color:#f0bd75; font:700 .72rem/1 Arial,sans-serif; letter-spacing:.12em; text-transform:uppercase; }
     h1 { margin:0; font-size:1.35rem; }
     .subtitle { margin:5px 0 0; color:#d8dfeb; font:400 .86rem/1.3 Arial,sans-serif; }
     button { font:700 .82rem/1 Arial,sans-serif; cursor:pointer; }
     .reset { border:1px solid #ffffff66; background:transparent; color:#fff; border-radius:99px; padding:9px 11px; }
-    .messages { overflow-y:auto; overscroll-behavior:contain; padding:24px; display:flex; flex-direction:column; gap:14px; scroll-behavior:smooth; }
+    .messages { min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:24px; display:flex; flex-direction:column; gap:14px; scroll-behavior:smooth; }
     .message { max-width:min(78%,600px); padding:13px 15px; border-radius:16px; font:400 1rem/1.48 Arial,sans-serif; overflow-wrap:anywhere; box-shadow:0 2px 10px #15284a12; }
     .bot { align-self:flex-start; background:#fff; border:1px solid var(--line); border-bottom-left-radius:4px; }
     .user { align-self:flex-end; background:var(--accent); color:#fff; border-bottom-right-radius:4px; }
@@ -31,7 +32,7 @@
     aside h2 { margin:0 0 12px; font-size:1.05rem; }
     aside p { margin:0 0 18px; color:#4e5869; font:400 .92rem/1.55 Arial,sans-serif; }
     .status { display:inline-block; padding:6px 9px; border-radius:99px; background:#d8e4d1; color:#345233; font:700 .72rem Arial,sans-serif; text-transform:uppercase; }
-    @media (max-width:720px) { .app{display:block}.chat{min-height:100dvh} aside{display:none}.top{padding:17px 16px 14px}.messages{padding:18px 14px}.message{max-width:88%;font-size:.97rem} form{padding:12px 14px calc(12px + env(safe-area-inset-bottom))}.send{padding:0 14px}.reset{padding:8px 9px;font-size:.74rem} }
+    @media (max-width:720px) { .app{display:block}.chat{height:100dvh;min-height:0} aside{display:none}.top{padding:17px 16px 14px}.messages{padding:18px 14px}.message{max-width:88%;font-size:.97rem} form{padding:12px 14px calc(12px + env(safe-area-inset-bottom))}.send{padding:0 14px}.reset{padding:8px 9px;font-size:.74rem} }
   </style>
 </head>
 <body>
@@ -58,15 +59,16 @@
     localStorage.setItem(sessionKey, sessionId);
     let busy = false;
     function scrollToLatest() {
-      const scroll = () => messages.scrollTo({ top: messages.scrollHeight, behavior: 'smooth' });
+      const scroll = behavior => messages.scrollTo({ top: messages.scrollHeight, behavior });
       requestAnimationFrame(() => {
-        scroll();
-        // A second pass accounts for the final height of long wrapped messages.
-        setTimeout(scroll, 120);
+        scroll('auto');
+        requestAnimationFrame(() => scroll('smooth'));
+        setTimeout(() => scroll('auto'), 180);
       });
     }
+    new ResizeObserver(scrollToLatest).observe(messages);
     function addMessage(text, type) { const el=document.createElement('div'); el.className='message '+type; el.textContent=text; messages.append(el); scrollToLatest(); }
-    function setStatus(stage) { const labels={new:'Información',discovery:'Explorando opciones',application:'Solicitud',completed:'Registro completo',closed:'Conversación cerrada'}; status.textContent=labels[stage]||'Información'; }
+    function setStatus(stage) { const labels={new:'Información',informing:'Información verificada',discovery:'Explorando opciones',application:'Solicitud',completed:'Registro completo',closed:'Conversación cerrada',human_handoff:'Asesor humano'}; status.textContent=labels[stage]||'Información'; }
     async function sendMessage(text) { if (busy || !text) return; busy=true; send.disabled=true; addMessage(text,'user'); input.value=''; const typing=document.createElement('div'); typing.className='typing show'; typing.textContent='Carlos está escribiendo...'; messages.append(typing); scrollToLatest(); try { const r=await fetch(api,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_message:text,session_id:sessionId})}); const data=await r.json(); if(!data.ok) throw new Error(data.error||'Error'); typing.remove(); addMessage(data.response,'bot'); setStatus(data.state.stage); } catch(e) { typing.remove(); addMessage('No pude conectar en este momento. Inténtalo nuevamente en unos segundos.','bot'); } finally { busy=false; send.disabled=false; input.focus(); scrollToLatest(); } }
     form.addEventListener('submit', event=>{event.preventDefault(); sendMessage(input.value.trim());});
     document.querySelector('#reset').addEventListener('click',()=>{ localStorage.removeItem(sessionKey); sessionId=crypto.randomUUID(); localStorage.setItem(sessionKey,sessionId); messages.replaceChildren(); setStatus('new'); welcome(); });
