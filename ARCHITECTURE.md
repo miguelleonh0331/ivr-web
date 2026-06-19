@@ -10,6 +10,10 @@ Los archivos de `rag_dinners/` son la fuente editable de producto. `KnowledgeBas
 
 `ConversationEngine` conserva memoria de sesion, decide la prioridad de la respuesta y solo inicia el registro de datos despues de una intencion explicita de solicitud.
 
+## Verificacion
+
+`tests/conversation_engine_test.php` cubre el caso de una preferencia y una consulta de tasas en el mismo turno, ademas del cierre respetuoso ante rechazo.
+
 ## Voz
 
 La futura capa STT/TTS debe enviar su transcripcion a `api_chat.php` y reproducir el campo `response`. La logica, memoria y RAG son compartidos por texto y voz.
