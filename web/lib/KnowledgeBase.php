@@ -32,7 +32,7 @@ class KnowledgeBase {
         return array_slice($results, 0, $limit);
     }
 
-    public function rateSummary(): ?string {
+    public function rateSummary(?array $cards = null): ?string {
         $file = $this->path . '/tasas.md';
         if (!is_file($file)) return null;
         $content = (string) file_get_contents($file);
@@ -40,10 +40,40 @@ class KnowledgeBase {
         $rows = [];
         foreach (preg_split('/\R/', $teaSection) ?: [] as $line) {
             if (preg_match('/\|\s*\*\*(Classic|Gold|Platinum|Black)\*\*\s*\|\s*([0-9.]+%)\s*\|\s*([0-9.]+%)/i', $line, $m)) {
+                if ($cards && !in_array($m[1], $cards, true)) continue;
                 $rows[] = $m[1] . ' ' . $m[2] . ' en compras y ' . $m[3] . ' en retiro';
             }
         }
         return $rows ? 'TEA vigente segun el documento de tasas: ' . implode('; ', $rows) . '.' : null;
+    }
+
+    public function comparison(array $cards): array {
+        $file = $this->path . '/beneficios.md';
+        if (!is_file($file)) return [];
+        $content = (string) file_get_contents($file);
+        $start = strpos($content, '## Comparativa Completa');
+        if ($start === false) return [];
+        $section = substr($content, $start);
+        $end = strpos($section, '## Beneficios Adicionales');
+        if ($end !== false) $section = substr($section, 0, $end);
+
+        $headers = [];
+        $rows = [];
+        foreach (preg_split('/\R/', $section) ?: [] as $line) {
+            if (strpos($line, '|') === false || strpos($line, '---') !== false) continue;
+            $cells = array_values(array_filter(array_map('trim', explode('|', $line)), function ($cell) { return $cell !== ''; }));
+            if (count($cells) < 5) continue;
+            if (!$headers) {
+                $headers = $cells;
+                continue;
+            }
+            $criterion = $this->normalize($cells[0]);
+            foreach ($cards as $card) {
+                $index = array_search($card, $headers, true);
+                if ($index !== false && isset($cells[$index])) $rows[$card][$criterion] = $cells[$index];
+            }
+        }
+        return $rows;
     }
 
     public function readableExcerpt(array $result, int $max = 360): string {

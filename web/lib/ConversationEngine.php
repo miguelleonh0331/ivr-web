@@ -32,9 +32,15 @@ class ConversationEngine {
         } elseif (in_array('start_application', $analysis['intents'], true) || $state['stage'] === 'application') {
             $state['stage'] = 'application';
             $reply = $this->continueApplication($state, $message);
+        } elseif (in_array('compare_options', $analysis['intents'], true)) {
+            $state['stage'] = 'recommending';
+            $reply = $this->compareOptions($state);
         } elseif (in_array('ask_rates', $analysis['intents'], true)) {
             $state['stage'] = 'informing';
             $reply = $this->answerRates($state);
+        } elseif ($this->isShortTopicSelection($message, $analysis)) {
+            $state['stage'] = 'discovery';
+            $reply = $this->nextDiscoveryQuestion($state);
         } elseif (in_array('ask_fees', $analysis['intents'], true) || in_array('ask_product', $analysis['intents'], true)) {
             $state['stage'] = 'informing';
             $reply = $this->answerFromKnowledge($message, $state);
@@ -57,7 +63,7 @@ class ConversationEngine {
     }
 
     private function load(string $file): array {
-        $initial = ['stage' => 'new', 'profile' => ['interest' => null, 'travel_purpose' => null], 'application' => ['card' => null, 'dni' => null, 'phone' => null, 'email' => null], 'objections' => 0, 'history' => [], 'summary' => ''];
+        $initial = ['stage' => 'new', 'profile' => ['interest' => null, 'travel_purpose' => null], 'recommendation' => ['cards' => []], 'application' => ['card' => null, 'dni' => null, 'phone' => null, 'email' => null], 'objections' => 0, 'history' => [], 'summary' => ''];
         if (!is_file($file)) return $initial;
         $saved = json_decode((string) file_get_contents($file), true);
         return is_array($saved) ? array_replace_recursive($initial, $saved) : $initial;
@@ -69,10 +75,27 @@ class ConversationEngine {
     }
 
     private function answerRates(array $state): string {
-        $summary = $this->knowledge->rateSummary();
+        $cards = $state['recommendation']['cards'] ?: null;
+        $summary = $this->knowledge->rateSummary($cards);
         if (!$summary) return 'No encuentro tasas vigentes en la base de conocimiento. Prefiero no darte un dato que no pueda confirmar.';
-        $bridge = $state['profile']['travel_purpose'] === 'pleasure' ? ' Como indicaste que viajas por placer, despues podemos comparar Gold y Platinum por sus beneficios de viaje.' : ' Si quieres, despues comparo la tasa con los beneficios de cada tarjeta.';
+        $bridge = $cards ? ' Quieres que compare estas dos opciones por cuota, seguro y lounge?' : ' Si quieres, despues comparo la tasa con los beneficios de cada tarjeta.';
         return $summary . $bridge;
+    }
+
+    private function compareOptions(array &$state): string {
+        $cards = $state['recommendation']['cards'];
+        if (!$cards && $state['profile']['interest'] === 'travel') $cards = ['Gold', 'Platinum'];
+        if (count($cards) < 2) return 'Claro. Para comparar necesito saber que dos tarjetas te interesan. Podemos revisar Classic y Gold, o Gold y Platinum.';
+        $state['recommendation']['cards'] = $cards;
+        $comparison = $this->knowledge->comparison($cards);
+        if (count($comparison) < 2) return 'No encuentro una comparativa vigente en la base de conocimiento. Prefiero que un asesor confirme esos datos.';
+        $facts = [];
+        foreach ($cards as $card) {
+            $row = $comparison[$card] ?? [];
+            $facts[] = $card . ': cuota ' . ($row['cuota anual'] ?? 'no disponible') . ', viajes ' . ($row['viajes'] ?? 'no disponible') . ', seguro de viaje ' . ($row['seguro viaje'] ?? 'no disponible') . ', lounge ' . ($row['lounge'] ?? 'no disponible') . ' y TEA ' . ($row['tea'] ?? 'no disponible') . '.';
+        }
+        $guide = $state['profile']['travel_purpose'] === 'pleasure' ? ' Para viajes por placer ocasionales, Gold suele ser la alternativa mas contenida; si viajas con frecuencia, Platinum entrega mas cobertura y accesos. Cual de las dos se acerca mas a lo que buscas?' : ' Cual de estas opciones quieres revisar con mas detalle?';
+        return implode(' ', $facts) . $guide;
     }
 
     private function answerFromKnowledge(string $message, array $state): string {
@@ -90,11 +113,19 @@ class ConversationEngine {
         return 'Entiendo. Podemos resolver una sola duda concreta y tu decides con tranquilidad. Que te preocupa mas: tasas, cuota o beneficios?';
     }
 
-    private function nextDiscoveryQuestion(array $state): string {
+    private function nextDiscoveryQuestion(array &$state): string {
         if ($state['profile']['interest'] === 'travel' && !$state['profile']['travel_purpose']) return 'Para orientarte mejor, viajas principalmente por trabajo o por placer?';
-        if ($state['profile']['interest'] === 'travel') return 'Con ese perfil puedo comparar opciones de viaje. Prefieres revisar tasas, seguros o accesos a lounge?';
+        if ($state['profile']['interest'] === 'travel') {
+            $state['recommendation']['cards'] = ['Gold', 'Platinum'];
+            return 'Como viajas por placer, Gold y Platinum son las opciones mas relevantes. Prefieres revisar tasas, seguros, lounge o quieres que las compare?';
+        }
         if ($state['profile']['interest'] === 'restaurants') return 'Perfecto. Sueles salir a comer con frecuencia o buscas descuentos ocasionales?';
         return 'Puedo ayudarte a elegir sin presion. Que te interesa mas: restaurantes, viajes, ahorro en cuota o seguridad?';
+    }
+
+    private function isShortTopicSelection(string $message, array $analysis): bool {
+        $words = preg_split('/\s+/', trim($message)) ?: [];
+        return count($words) <= 2 && !in_array('ask_rates', $analysis['intents'], true) && !in_array('ask_fees', $analysis['intents'], true) && !in_array('compare_options', $analysis['intents'], true) && !empty($analysis['entities']['interest']);
     }
 
     private function continueApplication(array &$state, string $message): string {

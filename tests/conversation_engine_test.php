@@ -12,11 +12,17 @@ $sessionId = 'conversation_' . uniqid('', true);
 $first = $engine->reply($sessionId, 'viaje');
 assertTrue($first['state']['profile']['interest'] === 'travel', 'Debe guardar interes en viajes.');
 
-$second = $engine->reply($sessionId, 'por placer, pero dime las tasas');
-assertTrue($second['state']['profile']['travel_purpose'] === 'pleasure', 'Debe guardar viajes por placer.');
+$profile = $engine->reply($sessionId, 'por placer');
+assertTrue($profile['state']['profile']['travel_purpose'] === 'pleasure', 'Debe guardar viaje por placer con respuesta corta.');
+
+$second = $engine->reply($sessionId, 'tasas');
 assertTrue(in_array('ask_rates', $second['analysis']['intents'], true), 'Debe detectar consulta de tasas.');
-assertTrue(strpos($second['response'], 'Classic 45.9%') !== false, 'Debe responder TEA desde tasas.md.');
+assertTrue(strpos($second['response'], 'Gold 39.9%') !== false, 'Debe responder TEA de las opciones recomendadas desde tasas.md.');
 assertTrue(strpos($second['response'], '3.19%') === false, 'No debe mezclar TEM cuando se pide TEA.');
+
+$comparison = $engine->reply($sessionId, 'comparalo');
+assertTrue(in_array('compare_options', $comparison['analysis']['intents'], true), 'Debe entender comparalo como comparacion contextual.');
+assertTrue(strpos($comparison['response'], 'Gold: cuota') !== false, 'Debe comparar las tarjetas recomendadas.');
 
 $third = $engine->reply($sessionId, 'no me interesa');
 assertTrue($third['state']['stage'] === 'closed', 'Debe cerrar ante rechazo firme.');
