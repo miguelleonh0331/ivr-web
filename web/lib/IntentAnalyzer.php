@@ -24,6 +24,8 @@ class IntentAnalyzer {
         if ($matches('/\b(tasa|tasas|tea|tem|interes|intereses)\b/u')) $intents[] = 'ask_rates';
         if ($matches('/\b(cuota|comision|costo|precio)\b/u')) $intents[] = 'ask_fees';
         if ($matches('/\b(compara|comparalo|comparala|compare|diferencia|cual conviene|mejor opcion)\b/u')) $intents[] = 'compare_options';
+        if ($matches('/\b(si|claro|dale|ok|perfecto|adelante|vamos)\b/u')) $intents[] = 'affirm';
+        if ($matches('/\b(no|mejor no|ahora no)\b/u')) $intents[] = 'deny';
         if ($matches('/\b(beneficio|punto|lounge|seguro|restaurante|viaje|promocion)\b/u')) $intents[] = 'ask_product';
         if ($matches('/\b(quiero solicitar|iniciar solicitud|iniciar el tramite|quiero la tarjeta|me interesa solicitar|vamos a solicitar)\b/u')) $intents[] = 'start_application';
         if ($matches('/\b(asesor|persona|humano|llamar)\b/u')) $intents[] = 'request_human';

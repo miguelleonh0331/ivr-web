@@ -29,6 +29,17 @@ class ConversationEngine {
         } elseif (in_array('request_human', $analysis['intents'], true)) {
             $state['stage'] = 'human_handoff';
             $reply = 'Claro. Registrare que prefieres continuar con un asesor humano. Mientras tanto, puedo responder cualquier consulta puntual del producto.';
+        } elseif ($this->isRecommendedCardSelection($state, $analysis)) {
+            $reply = $this->selectCard($state, $analysis['entities']['card']);
+        } elseif (in_array('affirm', $analysis['intents'], true) && ($state['pending_action'] ?? null) === 'compare_options') {
+            $state['stage'] = 'recommending';
+            $reply = $this->compareOptions($state);
+        } elseif (in_array('affirm', $analysis['intents'], true) && ($state['pending_action'] ?? null) === 'start_application') {
+            $state['stage'] = 'application';
+            $reply = $this->continueApplication($state, $message);
+        } elseif (in_array('deny', $analysis['intents'], true) && !in_array('reject_firm', $analysis['intents'], true)) {
+            $state['pending_action'] = null;
+            $reply = 'No hay problema. Podemos dejar la solicitud para otro momento. Que informacion te gustaria revisar antes de decidir?';
         } elseif (in_array('start_application', $analysis['intents'], true) || $state['stage'] === 'application') {
             $state['stage'] = 'application';
             $reply = $this->continueApplication($state, $message);
@@ -63,7 +74,7 @@ class ConversationEngine {
     }
 
     private function load(string $file): array {
-        $initial = ['stage' => 'new', 'profile' => ['interest' => null, 'travel_purpose' => null], 'recommendation' => ['cards' => []], 'application' => ['card' => null, 'dni' => null, 'phone' => null, 'email' => null], 'objections' => 0, 'history' => [], 'summary' => ''];
+        $initial = ['stage' => 'new', 'profile' => ['interest' => null, 'travel_purpose' => null], 'recommendation' => ['cards' => []], 'application' => ['card' => null, 'dni' => null, 'phone' => null, 'email' => null], 'pending_action' => null, 'objections' => 0, 'history' => [], 'summary' => ''];
         if (!is_file($file)) return $initial;
         $saved = json_decode((string) file_get_contents($file), true);
         return is_array($saved) ? array_replace_recursive($initial, $saved) : $initial;
@@ -74,10 +85,11 @@ class ConversationEngine {
         if (!empty($entities['card'])) $state['application']['card'] = $entities['card'];
     }
 
-    private function answerRates(array $state): string {
+    private function answerRates(array &$state): string {
         $cards = $state['recommendation']['cards'] ?: null;
         $summary = $this->knowledge->rateSummary($cards);
         if (!$summary) return 'No encuentro tasas vigentes en la base de conocimiento. Prefiero no darte un dato que no pueda confirmar.';
+        if ($cards) $state['pending_action'] = 'compare_options';
         $bridge = $cards ? ' Quieres que compare estas dos opciones por cuota, seguro y lounge?' : ' Si quieres, despues comparo la tasa con los beneficios de cada tarjeta.';
         return $summary . $bridge;
     }
@@ -94,6 +106,7 @@ class ConversationEngine {
             $row = $comparison[$card] ?? [];
             $facts[] = $card . ': cuota ' . ($row['cuota anual'] ?? 'no disponible') . ', viajes ' . ($row['viajes'] ?? 'no disponible') . ', seguro de viaje ' . ($row['seguro viaje'] ?? 'no disponible') . ', lounge ' . ($row['lounge'] ?? 'no disponible') . ' y TEA ' . ($row['tea'] ?? 'no disponible') . '.';
         }
+        $state['pending_action'] = 'select_card';
         $guide = $state['profile']['travel_purpose'] === 'pleasure' ? ' Para viajes por placer ocasionales, Gold suele ser la alternativa mas contenida; si viajas con frecuencia, Platinum entrega mas cobertura y accesos. Cual de las dos se acerca mas a lo que buscas?' : ' Cual de estas opciones quieres revisar con mas detalle?';
         return implode(' ', $facts) . $guide;
     }
@@ -117,6 +130,7 @@ class ConversationEngine {
         if ($state['profile']['interest'] === 'travel' && !$state['profile']['travel_purpose']) return 'Para orientarte mejor, viajas principalmente por trabajo o por placer?';
         if ($state['profile']['interest'] === 'travel') {
             $state['recommendation']['cards'] = ['Gold', 'Platinum'];
+            $state['pending_action'] = 'compare_options';
             return 'Como viajas por placer, Gold y Platinum son las opciones mas relevantes. Prefieres revisar tasas, seguros, lounge o quieres que las compare?';
         }
         if ($state['profile']['interest'] === 'restaurants') return 'Perfecto. Sueles salir a comer con frecuencia o buscas descuentos ocasionales?';
@@ -126,6 +140,17 @@ class ConversationEngine {
     private function isShortTopicSelection(string $message, array $analysis): bool {
         $words = preg_split('/\s+/', trim($message)) ?: [];
         return count($words) <= 2 && !in_array('ask_rates', $analysis['intents'], true) && !in_array('ask_fees', $analysis['intents'], true) && !in_array('compare_options', $analysis['intents'], true) && !empty($analysis['entities']['interest']);
+    }
+
+    private function isRecommendedCardSelection(array $state, array $analysis): bool {
+        return !empty($analysis['entities']['card']) && in_array($analysis['entities']['card'], $state['recommendation']['cards'] ?? [], true);
+    }
+
+    private function selectCard(array &$state, string $card): string {
+        $state['application']['card'] = $card;
+        $state['stage'] = 'considering';
+        $state['pending_action'] = 'start_application';
+        return 'Buena eleccion. La DINNERS ' . $card . ' queda seleccionada como tu opcion. Si quieres, iniciamos la preevaluacion; tambien puedo resolver una duda antes de pedirte datos.';
     }
 
     private function continueApplication(array &$state, string $message): string {

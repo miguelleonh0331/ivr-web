@@ -24,6 +24,12 @@ $comparison = $engine->reply($sessionId, 'comparalo');
 assertTrue(in_array('compare_options', $comparison['analysis']['intents'], true), 'Debe entender comparalo como comparacion contextual.');
 assertTrue(strpos($comparison['response'], 'Gold: cuota') !== false, 'Debe comparar las tarjetas recomendadas.');
 
+$selection = $engine->reply($sessionId, 'gold');
+assertTrue($selection['state']['stage'] === 'considering', 'Debe entender una tarjeta como seleccion contextual.');
+
+$confirmation = $engine->reply($sessionId, 'si');
+assertTrue($confirmation['state']['stage'] === 'application', 'Debe entender si como confirmacion de solicitud contextual.');
+
 $third = $engine->reply($sessionId, 'no me interesa');
 assertTrue($third['state']['stage'] === 'closed', 'Debe cerrar ante rechazo firme.');
 
