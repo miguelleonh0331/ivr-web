@@ -113,6 +113,10 @@ function normalize(string $value): string {
     return strtr($value, ['á'=>'a', 'é'=>'e', 'í'=>'i', 'ó'=>'o', 'ú'=>'u', 'ü'=>'u']);
 }
 
+function contains(string $text, string $needle): bool {
+    return strpos($text, $needle) !== false;
+}
+
 function isHardRejection(string $text): bool {
     return (bool) preg_match('/\b(no quiero nada|no me interesa|no gracias|paso|dejame|dejenme|no insistas|no insista|cancelar|olvida|adios|chau|hasta nunca)\b/u', $text);
 }
@@ -146,31 +150,31 @@ function continueApplication(array &$state): string {
 }
 
 function answerObjection(string $text): string {
-    if (str_contains($text, 'ya tengo') || str_contains($text, 'tengo tarjeta')) {
+    if (contains($text, 'ya tengo') || contains($text, 'tengo tarjeta')) {
         return 'Tiene sentido. DINNERS puede complementar la que ya usas: destaca en restaurantes, viajes y experiencias. Si no te aporta valor real, no tendría sentido cambiar. ¿Tus gastos se concentran más en comidas o en viajes?';
     }
-    if (str_contains($text, 'cuota')) {
+    if (contains($text, 'cuota')) {
         return 'La cuota es importante y conviene verla con claridad. La Classic no tiene cuota el primer año; después puedes decidir si los beneficios justifican mantenerla. ¿Buscas una opción sin riesgo para empezar?';
     }
-    if (str_contains($text, 'tasa') || str_contains($text, 'interes') || str_contains($text, 'deuda')) {
+    if (contains($text, 'tasa') || contains($text, 'interes') || contains($text, 'deuda')) {
         return 'Es una preocupación válida. La tarjeta tiene sentido si puedes pagar el total; así evitas intereses y aprovechas los beneficios. Si buscas financiarte, revisaremos las condiciones antes de cualquier solicitud. ¿Quieres que te explique las cuotas sin interés?';
     }
-    if (str_contains($text, 'complicado')) {
+    if (contains($text, 'complicado')) {
         return 'El proceso es corto: una preevaluación y luego validación de datos. Si no es buen momento, no hace falta iniciarlo ahora. ¿Prefieres conocer primero los beneficios o dejarlo para más adelante?';
     }
     return 'Claro, tómate tu tiempo. Puedo responder una duda puntual para que decidas con información completa. ¿Qué te preocupa más: cuota, tasas o beneficios?';
 }
 
 function answerInformation(string $text): string {
-    if (str_contains($text, 'viaje') || str_contains($text, 'lounge')) return 'DINNERS ofrece puntos para viajes, seguros según la tarjeta y accesos a lounge desde Gold. ¿Viajas con frecuencia por trabajo o por placer?';
-    if (str_contains($text, 'restaurante') || str_contains($text, 'punto')) return 'En restaurantes puedes acumular más puntos y acceder a descuentos en aliados, según la tarjeta. ¿Sueles salir a comer al menos una vez al mes?';
-    if (str_contains($text, 'cuota') || str_contains($text, 'precio')) return 'La Classic no tiene cuota el primer año; Gold, Platinum y Black tienen beneficios crecientes. ¿Quieres una alternativa de bajo costo o más beneficios para viajes y restaurantes?';
+    if (contains($text, 'viaje') || contains($text, 'lounge')) return 'DINNERS ofrece puntos para viajes, seguros según la tarjeta y accesos a lounge desde Gold. ¿Viajas con frecuencia por trabajo o por placer?';
+    if (contains($text, 'restaurante') || contains($text, 'punto')) return 'En restaurantes puedes acumular más puntos y acceder a descuentos en aliados, según la tarjeta. ¿Sueles salir a comer al menos una vez al mes?';
+    if (contains($text, 'cuota') || contains($text, 'precio')) return 'La Classic no tiene cuota el primer año; Gold, Platinum y Black tienen beneficios crecientes. ¿Quieres una alternativa de bajo costo o más beneficios para viajes y restaurantes?';
     return 'Soy Carlos, asesor DINNERS. Te explico la tarjeta con transparencia y, si te interesa, te acompaño a solicitarla. ¿Te atraen más los beneficios en restaurantes, viajes o una opción sin cuota el primer año?';
 }
 
 function recommendNextStep(string $text): string {
-    if (str_contains($text, 'viaj')) return 'Por lo que comentas, Gold o Platinum pueden encajar por los beneficios de viaje. ¿Quieres que comparemos esas dos opciones?';
-    if (str_contains($text, 'com') || str_contains($text, 'rest')) return 'Si disfrutas salir a comer, Gold destaca por sus puntos y descuentos en restaurantes. ¿Quieres que te cuente qué incluye antes de decidir?';
+    if (contains($text, 'viaj')) return 'Por lo que comentas, Gold o Platinum pueden encajar por los beneficios de viaje. ¿Quieres que comparemos esas dos opciones?';
+    if (contains($text, 'com') || contains($text, 'rest')) return 'Si disfrutas salir a comer, Gold destaca por sus puntos y descuentos en restaurantes. ¿Quieres que te cuente qué incluye antes de decidir?';
     return 'Para recomendarte bien, dime qué te interesa más: ahorrar en restaurantes, acumular beneficios de viaje o empezar sin cuota el primer año.';
 }
 
