@@ -57,9 +57,17 @@
     let sessionId = localStorage.getItem(sessionKey) || crypto.randomUUID();
     localStorage.setItem(sessionKey, sessionId);
     let busy = false;
-    function addMessage(text, type) { const el=document.createElement('div'); el.className='message '+type; el.textContent=text; messages.append(el); requestAnimationFrame(()=>messages.scrollTop=messages.scrollHeight); }
+    function scrollToLatest() {
+      const scroll = () => messages.scrollTo({ top: messages.scrollHeight, behavior: 'smooth' });
+      requestAnimationFrame(() => {
+        scroll();
+        // A second pass accounts for the final height of long wrapped messages.
+        setTimeout(scroll, 120);
+      });
+    }
+    function addMessage(text, type) { const el=document.createElement('div'); el.className='message '+type; el.textContent=text; messages.append(el); scrollToLatest(); }
     function setStatus(stage) { const labels={new:'Información',discovery:'Explorando opciones',application:'Solicitud',completed:'Registro completo',closed:'Conversación cerrada'}; status.textContent=labels[stage]||'Información'; }
-    async function sendMessage(text) { if (busy || !text) return; busy=true; send.disabled=true; addMessage(text,'user'); input.value=''; const typing=document.createElement('div'); typing.className='typing show'; typing.textContent='Carlos está escribiendo...'; messages.append(typing); messages.scrollTop=messages.scrollHeight; try { const r=await fetch(api,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_message:text,session_id:sessionId})}); const data=await r.json(); if(!data.ok) throw new Error(data.error||'Error'); typing.remove(); addMessage(data.response,'bot'); setStatus(data.state.stage); } catch(e) { typing.remove(); addMessage('No pude conectar en este momento. Inténtalo nuevamente en unos segundos.','bot'); } finally { busy=false; send.disabled=false; input.focus(); } }
+    async function sendMessage(text) { if (busy || !text) return; busy=true; send.disabled=true; addMessage(text,'user'); input.value=''; const typing=document.createElement('div'); typing.className='typing show'; typing.textContent='Carlos está escribiendo...'; messages.append(typing); scrollToLatest(); try { const r=await fetch(api,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_message:text,session_id:sessionId})}); const data=await r.json(); if(!data.ok) throw new Error(data.error||'Error'); typing.remove(); addMessage(data.response,'bot'); setStatus(data.state.stage); } catch(e) { typing.remove(); addMessage('No pude conectar en este momento. Inténtalo nuevamente en unos segundos.','bot'); } finally { busy=false; send.disabled=false; input.focus(); scrollToLatest(); } }
     form.addEventListener('submit', event=>{event.preventDefault(); sendMessage(input.value.trim());});
     document.querySelector('#reset').addEventListener('click',()=>{ localStorage.removeItem(sessionKey); sessionId=crypto.randomUUID(); localStorage.setItem(sessionKey,sessionId); messages.replaceChildren(); setStatus('new'); welcome(); });
     function welcome(){ addMessage('Hola, soy Carlos de DINNERS. Puedo explicarte los beneficios de nuestras tarjetas y ayudarte a elegir solo si te interesa. ¿Buscas restaurantes, viajes o una opción sin cuota el primer año?','bot'); }
