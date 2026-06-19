@@ -1,0 +1,21 @@
+{
+  "demo": true,
+  "client": {
+    "id": "cliente-demo-001",
+    "approved_credit_limit": 50000,
+    "available_credit_limit": 50000,
+    "minimum_loan_amount": 1000,
+    "currency": "PEN"
+  },
+  "loan_terms": [
+    { "months": 6, "monthly_rate": 0.018 },
+    { "months": 9, "monthly_rate": 0.020 },
+    { "months": 12, "monthly_rate": 0.022 }
+  ],
+  "calculation": {
+    "method": "french_amortization",
+    "includes_insurance": false,
+    "includes_disbursement_fee": false,
+    "disclaimer": "Simulacion referencial. La evaluacion final puede variar segun validacion crediticia."
+  }
+}

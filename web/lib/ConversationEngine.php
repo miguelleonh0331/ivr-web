@@ -3,16 +3,19 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/KnowledgeBase.php';
 require_once __DIR__ . '/IntentAnalyzer.php';
+require_once __DIR__ . '/CreditSimulator.php';
 
 class ConversationEngine {
     private $knowledge;
     private $sessionsPath;
     private $analyzer;
+    private $credit;
 
     public function __construct(string $knowledgePath, string $sessionsPath) {
         $this->knowledge = new KnowledgeBase($knowledgePath);
         $this->sessionsPath = $sessionsPath;
         $this->analyzer = new IntentAnalyzer();
+        $this->credit = new CreditSimulator(__DIR__ . '/../data/credit_offer_demo.json');
     }
 
     public function reply(string $sessionId, string $message): array {
@@ -26,36 +29,42 @@ class ConversationEngine {
             $reply = 'Entiendo. Gracias por tu tiempo; no insistire. Si en otro momento deseas informacion, estare disponible.';
         } elseif ($state['stage'] === 'closed') {
             $reply = 'La conversacion quedo cerrada para respetar tu decision. Si deseas retomarla, escribe "quiero informacion".';
-        } elseif (in_array('request_human', $analysis['intents'], true)) {
+        } elseif (in_array('request_human', $analysis['intents'], true) && $this->isExplicitHumanRequest($message)) {
             $state['stage'] = 'human_handoff';
             $reply = 'Claro. Registrare que prefieres continuar con un asesor humano. Mientras tanto, puedo responder cualquier consulta puntual del producto.';
-        } elseif ($this->isRecommendedCardSelection($state, $analysis)) {
-            $reply = $this->selectCard($state, $analysis['entities']['card']);
-        } elseif (in_array('affirm', $analysis['intents'], true) && ($state['pending_action'] ?? null) === 'compare_options') {
+        } elseif ($this->isPureConfirmation($message) && ($state['pending_action'] ?? null) === 'compare_options') {
             $state['stage'] = 'recommending';
             $reply = $this->compareOptions($state);
-        } elseif (in_array('affirm', $analysis['intents'], true) && ($state['pending_action'] ?? null) === 'start_application') {
+        } elseif ($this->isPureConfirmation($message) && ($state['pending_action'] ?? null) === 'start_application') {
             $state['stage'] = 'application';
             $reply = $this->continueApplication($state, $message);
         } elseif (in_array('deny', $analysis['intents'], true) && !in_array('reject_firm', $analysis['intents'], true)) {
             $state['pending_action'] = null;
             $reply = 'No hay problema. Podemos dejar la solicitud para otro momento. Que informacion te gustaria revisar antes de decidir?';
-        } elseif (in_array('start_application', $analysis['intents'], true) || $state['stage'] === 'application') {
+        } elseif (in_array('start_application', $analysis['intents'], true) || ($state['stage'] === 'application' && !$this->hasDirectQuestion($analysis))) {
             $state['stage'] = 'application';
             if (!empty($analysis['entities']['card'])) $state['application']['card'] = $analysis['entities']['card'];
             $reply = $this->continueApplication($state, $message);
+        } elseif (in_array('loan_simulation', $analysis['intents'], true) || !empty($analysis['entities']['loan_amount']) || !empty($analysis['entities']['term_months'])) {
+            $state['stage'] = 'loan_simulation';
+            $reply = $this->simulateLoan($state);
+        } elseif (in_array('ask_credit_limit', $analysis['intents'], true)) {
+            $state['stage'] = 'loan_information';
+            $reply = $this->answerCreditLimit($state);
         } elseif (in_array('compare_options', $analysis['intents'], true)) {
             $state['stage'] = 'recommending';
             $reply = $this->compareOptions($state);
         } elseif (in_array('ask_rates', $analysis['intents'], true)) {
             $state['stage'] = 'informing';
-            $reply = $this->answerRates($state);
+            $reply = !empty($state['loan']['amount']) ? $this->simulateLoan($state) : $this->answerRates($state);
         } elseif ($this->isShortTopicSelection($message, $analysis)) {
             $state['stage'] = 'discovery';
             $reply = $this->nextDiscoveryQuestion($state);
         } elseif (in_array('ask_fees', $analysis['intents'], true) || in_array('ask_product', $analysis['intents'], true)) {
             $state['stage'] = 'informing';
             $reply = $this->answerFromKnowledge($message, $state);
+        } elseif ($this->isRecommendedCardSelection($state, $analysis, $message)) {
+            $reply = $this->selectCard($state, $analysis['entities']['card']);
         } elseif (in_array('objection', $analysis['intents'], true)) {
             $state['objections']++;
             $state['stage'] = 'discovery';
@@ -75,7 +84,7 @@ class ConversationEngine {
     }
 
     private function load(string $file): array {
-        $initial = ['stage' => 'new', 'profile' => ['interest' => null, 'travel_purpose' => null], 'recommendation' => ['cards' => []], 'application' => ['card' => null, 'dni' => null, 'phone' => null, 'email' => null], 'pending_action' => null, 'objections' => 0, 'history' => [], 'summary' => ''];
+        $initial = ['stage' => 'new', 'profile' => ['interest' => null, 'travel_purpose' => null], 'recommendation' => ['cards' => []], 'loan' => ['amount' => null, 'term_months' => null], 'application' => ['card' => null, 'dni' => null, 'phone' => null, 'email' => null], 'pending_action' => null, 'objections' => 0, 'history' => [], 'summary' => ''];
         if (!is_file($file)) return $initial;
         $saved = json_decode((string) file_get_contents($file), true);
         return is_array($saved) ? array_replace_recursive($initial, $saved) : $initial;
@@ -83,6 +92,7 @@ class ConversationEngine {
 
     private function mergeMemory(array &$state, array $entities): void {
         foreach (['interest', 'travel_purpose'] as $field) if (!empty($entities[$field])) $state['profile'][$field] = $entities[$field];
+        foreach (['loan_amount' => 'amount', 'term_months' => 'term_months'] as $entity => $field) if (!empty($entities[$entity])) $state['loan'][$field] = $entities[$entity];
     }
 
     private function answerRates(array &$state): string {
@@ -142,8 +152,9 @@ class ConversationEngine {
         return count($words) <= 2 && !in_array('ask_rates', $analysis['intents'], true) && !in_array('ask_fees', $analysis['intents'], true) && !in_array('compare_options', $analysis['intents'], true) && !empty($analysis['entities']['interest']);
     }
 
-    private function isRecommendedCardSelection(array $state, array $analysis): bool {
-        return !empty($analysis['entities']['card']) && in_array($analysis['entities']['card'], $state['recommendation']['cards'] ?? [], true);
+    private function isRecommendedCardSelection(array $state, array $analysis, string $message): bool {
+        $selectionWords = preg_match('/^\s*(quiero|elijo|escojo|me quedo con)?\s*(classic|clasica|gold|platinum|black)\s*[.!]?\s*$/i', $message);
+        return $selectionWords && !empty($analysis['entities']['card']) && in_array($analysis['entities']['card'], $state['recommendation']['cards'] ?? [], true);
     }
 
     private function selectCard(array &$state, string $card): string {
@@ -165,15 +176,58 @@ class ConversationEngine {
         return 'Listo. Tu interes por la DINNERS ' . $state['application']['card'] . ' quedo registrado. Recibiras la confirmacion de la preevaluacion en 24 a 48 horas.';
     }
 
+    private function answerCreditLimit(array &$state): string {
+        $client = $this->credit->client();
+        $state['pending_action'] = 'loan_amount';
+        return 'La linea de credito referencial disponible para esta oferta es hasta ' . $this->credit->format($client['available_credit_limit']) . '. Puedes solicitar desde ' . $this->credit->format($client['minimum_loan_amount']) . ' y elegir un monto menor. Que monto deseas simular?';
+    }
+
+    private function simulateLoan(array &$state): string {
+        $client = $this->credit->client();
+        $amount = $state['loan']['amount'];
+        if (!$amount) return $this->answerCreditLimit($state);
+        if ($amount > $client['available_credit_limit']) return 'El monto solicitado supera la linea referencial de ' . $this->credit->format($client['available_credit_limit']) . '. Indica un monto menor para simularlo.';
+        if ($amount < $client['minimum_loan_amount']) return 'El monto minimo para esta simulacion es ' . $this->credit->format($client['minimum_loan_amount']) . '. Que monto deseas revisar?';
+        $term = $state['loan']['term_months'];
+        if ($term) {
+            $simulation = $this->credit->simulate((float) $amount, (int) $term);
+            return $this->simulationText($simulation);
+        }
+        $options = [];
+        foreach ($this->credit->terms() as $item) $options[] = $this->simulationText($this->credit->simulate((float) $amount, (int) $item['months']), false);
+        $state['pending_action'] = 'loan_term';
+        return 'Para ' . $this->credit->format((float) $amount) . ', estas son las opciones referenciales: ' . implode(' ', $options) . ' Cual plazo prefieres: 6, 9 o 12 meses?';
+    }
+
+    private function simulationText(?array $simulation, bool $includeDisclaimer = true): string {
+        if (!$simulation) return 'No puedo calcular ese plazo con la informacion vigente.';
+        $text = $simulation['months'] . ' meses: tasa mensual ' . number_format($simulation['monthly_rate'] * 100, 1) . '%, cuota aproximada ' . $this->credit->format($simulation['installment']) . ', total ' . $this->credit->format($simulation['total']) . ' e intereses ' . $this->credit->format($simulation['interest']) . '.';
+        return $includeDisclaimer ? $text . ' Simulacion referencial sin seguro ni comision de desembolso; la evaluacion final puede variar.' : $text;
+    }
+
+    private function isPureConfirmation(string $message): bool {
+        return (bool) preg_match('/^\s*(si|claro|dale|ok|perfecto|adelante|vamos)[.!]?\s*$/iu', $message);
+    }
+
+    private function isExplicitHumanRequest(string $message): bool {
+        return (bool) preg_match('/\b(asesor|persona|humano|llamar)\b/iu', $message);
+    }
+
+    private function hasDirectQuestion(array $analysis): bool {
+        $questionIntents = ['ask_rates', 'ask_fees', 'ask_product', 'ask_credit_limit', 'loan_simulation', 'compare_options', 'request_human'];
+        return (bool) array_intersect($analysis['intents'], $questionIntents);
+    }
+
     private function summary(array $state): string {
         $items = [];
         if ($state['profile']['interest']) $items[] = 'interes: ' . $state['profile']['interest'];
         if ($state['profile']['travel_purpose']) $items[] = 'viaje: ' . $state['profile']['travel_purpose'];
         if ($state['application']['card']) $items[] = 'tarjeta: ' . $state['application']['card'];
+        if ($state['loan']['amount']) $items[] = 'prestamo: ' . $state['loan']['amount'];
         return implode('; ', $items);
     }
 
     private function publicState(array $state): array {
-        return ['stage' => $state['stage'], 'profile' => $state['profile'], 'application_progress' => ['card' => (bool) $state['application']['card'], 'dni' => (bool) $state['application']['dni'], 'phone' => (bool) $state['application']['phone'], 'email' => (bool) $state['application']['email']]];
+        return ['stage' => $state['stage'], 'profile' => $state['profile'], 'loan' => $state['loan'], 'application_progress' => ['card' => (bool) $state['application']['card'], 'dni' => (bool) $state['application']['dni'], 'phone' => (bool) $state['application']['phone'], 'email' => (bool) $state['application']['email']]];
     }
 }

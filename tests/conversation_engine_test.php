@@ -30,6 +30,16 @@ assertTrue($selection['state']['stage'] === 'considering', 'Debe entender una ta
 $confirmation = $engine->reply($sessionId, 'si');
 assertTrue($confirmation['state']['stage'] === 'application', 'Debe entender si como confirmacion de solicitud contextual.');
 
+$loanSession = 'loan_' . uniqid('', true);
+$limit = $engine->reply($loanSession, 'cuanto prestan');
+assertTrue(strpos($limit['response'], '50,000.00') !== false, 'Debe informar la linea de credito ficticia.');
+
+$loan = $engine->reply($loanSession, 'quiero simular S/ 10,000');
+assertTrue(strpos($loan['response'], '6 meses') !== false, 'Debe ofrecer plazos de simulacion.');
+
+$loanTerm = $engine->reply($loanSession, '12 meses');
+assertTrue(strpos($loanTerm['response'], '12 meses:') !== false, 'Debe calcular la cuota del plazo solicitado.');
+
 $third = $engine->reply($sessionId, 'no me interesa');
 assertTrue($third['state']['stage'] === 'closed', 'Debe cerrar ante rechazo firme.');
 
