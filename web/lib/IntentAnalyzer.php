@@ -39,7 +39,7 @@ class IntentAnalyzer {
 
         if ($matches('/\b(viajo|viaje|viajes|lounge|hotel|aerolinea)\b/u')) $entities['interest'] = 'travel';
         if ($matches('/\b(restaurante|comer|cena|gastronomia)\b/u')) $entities['interest'] = 'restaurants';
-        if ($matches('/\b(sin cuota|ahorrar|economica|barata)\b/u')) $entities['interest'] = 'savings';
+        if ($matches('/\b(sin cuotas?|ahorrar|economica|barata)\b/u')) $entities['interest'] = 'savings';
         if ($matches('/\b(por placer|vacaciones|turismo)\b/u')) $entities['travel_purpose'] = 'pleasure';
         if ($matches('/\b(trabajo|negocio|laboral)\b/u')) $entities['travel_purpose'] = 'work';
         if (preg_match('/\b(classic|clasica|gold|platinum|black)\b/u', $text, $m)) $entities['card'] = ucfirst($m[1]);
@@ -104,7 +104,7 @@ class IntentAnalyzer {
     }
 
     private function hasInterestClue(string $message, string $interest): bool {
-        $patterns = ['travel' => '/\b(viaje|viajes|viajo|lounge|hotel|aerolinea)\b/u', 'restaurants' => '/\b(restaurante|comer|cena|gastronomia)\b/u', 'savings' => '/\b(sin cuota|ahorrar|economica|barata)\b/u'];
+        $patterns = ['travel' => '/\b(viaje|viajes|viajo|lounge|hotel|aerolinea)\b/u', 'restaurants' => '/\b(restaurante|comer|cena|gastronomia)\b/u', 'savings' => '/\b(sin cuotas?|ahorrar|economica|barata)\b/u'];
         return (bool) preg_match($patterns[$interest], $message);
     }
 
