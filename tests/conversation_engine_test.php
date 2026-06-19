@@ -56,6 +56,20 @@ $engine->reply($infoSession, 'gold');
 $infoAfterSelection = $engine->reply($infoSession, 'si dame informacion');
 assertTrue($infoAfterSelection['state']['stage'] === 'informing', 'Una pregunta con si no debe pedir DNI.');
 
+$naturalSession = 'natural_' . uniqid('', true);
+$more = $engine->reply($naturalSession, 'si dime mas');
+assertTrue($more['state']['profile']['travel_purpose'] === null, 'Una confirmacion vaga no debe inventar viajes por placer.');
+
+$savings = $engine->reply($naturalSession, 'quiero una opcion sin cuotas');
+assertTrue(strpos($savings['response'], 'Classic') !== false, 'Sin cuota debe orientar a Classic.');
+assertTrue(strpos($savings['response'], '50,000.00') === false, 'Sin cuota no debe abrir una simulacion de credito.');
+
+$repair = $engine->reply($naturalSession, 'te pregunte por una sin cuotas');
+assertTrue(strpos($repair['response'], 'Tienes razon') !== false, 'Debe reparar una correccion explicita.');
+
+$repeat = $engine->reply($naturalSession, 'repite por favor');
+assertTrue(strpos($repeat['response'], 'Claro, te lo repito') !== false, 'Debe repetir la ultima informacion cuando el cliente lo pide.');
+
 $third = $engine->reply($sessionId, 'no me interesa');
 assertTrue($third['state']['stage'] === 'closed', 'Debe cerrar ante rechazo firme.');
 

@@ -21,7 +21,7 @@ class ConversationEngine {
     public function reply(string $sessionId, string $message): array {
         $file = $this->sessionsPath . '/dinners_chat_' . $sessionId . '.json';
         $state = $this->load($file);
-        $analysis = $this->analyzer->analyze($message);
+        $analysis = $this->analyzer->analyze($message, $this->contextForAnalysis($state));
         $this->mergeMemory($state, $analysis['entities']);
 
         if (in_array('reject_firm', $analysis['intents'], true)) {
@@ -29,6 +29,11 @@ class ConversationEngine {
             $reply = 'Entiendo. Gracias por tu tiempo; no insistire. Si en otro momento deseas informacion, estare disponible.';
         } elseif ($state['stage'] === 'closed') {
             $reply = 'La conversacion quedo cerrada para respetar tu decision. Si deseas retomarla, escribe "quiero informacion".';
+        } elseif (in_array('correction', $analysis['intents'], true)) {
+            $state['stage'] = 'informing';
+            $reply = $this->repairContext($state, $analysis);
+        } elseif (in_array('repeat_request', $analysis['intents'], true)) {
+            $reply = $this->repeatLastAnswer($state);
         } elseif (in_array('request_human', $analysis['intents'], true) && $this->isExplicitHumanRequest($message)) {
             $state['stage'] = 'human_handoff';
             $reply = 'Claro. Registrare que prefieres continuar con un asesor humano. Mientras tanto, puedo responder cualquier consulta puntual del producto.';
@@ -57,6 +62,9 @@ class ConversationEngine {
         } elseif (in_array('ask_rates', $analysis['intents'], true)) {
             $state['stage'] = 'informing';
             $reply = !empty($state['loan']['amount']) ? $this->simulateLoan($state) : $this->answerRates($state);
+        } elseif ($this->isSavingsRequest($analysis)) {
+            $state['stage'] = 'informing';
+            $reply = $this->answerSavings($state);
         } elseif ($this->isRecommendedCardSelection($state, $analysis, $message)) {
             $reply = $this->selectCard($state, $analysis['entities']['card']);
         } elseif ($this->isShortTopicSelection($message, $analysis)) {
@@ -129,6 +137,12 @@ class ConversationEngine {
         return 'Segun la informacion vigente de ' . $results[0]['title'] . ': ' . $excerpt . ' ' . $bridge;
     }
 
+    private function answerSavings(array &$state): string {
+        $state['recommendation']['cards'] = ['Classic', 'Gold'];
+        $state['pending_action'] = 'compare_options';
+        return 'Tienes razon en buscar una opcion sin cuota. La DINNERS Classic no tiene cuota anual el primer ano y luego tiene una cuota de S/ 120. Si quieres, te explico sus beneficios o la comparo con Gold para que decidas con calma.';
+    }
+
     private function answerObjection(string $message): string {
         $text = strtolower($message);
         if (strpos($text, 'tengo tarjeta') !== false || strpos($text, 'ya tengo') !== false) return 'Es razonable. No necesitas cambiar si tu tarjeta actual ya cubre lo que buscas. Puedo mostrarte solo las diferencias en viajes, restaurantes o cuota para que compares sin compromiso.';
@@ -144,12 +158,17 @@ class ConversationEngine {
             return 'Como viajas por placer, Gold y Platinum son las opciones mas relevantes. Prefieres revisar tasas, seguros, lounge o quieres que las compare?';
         }
         if ($state['profile']['interest'] === 'restaurants') return 'Perfecto. Sueles salir a comer con frecuencia o buscas descuentos ocasionales?';
+        if ($state['profile']['interest'] === 'savings') return $this->answerSavings($state);
         return 'Puedo ayudarte a elegir sin presion. Que te interesa mas: restaurantes, viajes, ahorro en cuota o seguridad?';
     }
 
     private function isShortTopicSelection(string $message, array $analysis): bool {
         $words = preg_split('/\s+/', trim($message)) ?: [];
         return count($words) <= 2 && !in_array('ask_rates', $analysis['intents'], true) && !in_array('ask_fees', $analysis['intents'], true) && !in_array('compare_options', $analysis['intents'], true) && !empty($analysis['entities']['interest']);
+    }
+
+    private function isSavingsRequest(array $analysis): bool {
+        return ($analysis['entities']['interest'] ?? null) === 'savings';
     }
 
     private function isRecommendedCardSelection(array $state, array $analysis, string $message): bool {
@@ -219,6 +238,33 @@ class ConversationEngine {
     private function hasDirectQuestion(array $analysis): bool {
         $questionIntents = ['ask_rates', 'ask_fees', 'ask_product', 'ask_credit_limit', 'loan_simulation', 'compare_options', 'request_human'];
         return (bool) array_intersect($analysis['intents'], $questionIntents);
+    }
+
+    private function repairContext(array &$state, array $analysis): string {
+        if (($analysis['entities']['interest'] ?? null) === 'savings' || $state['profile']['interest'] === 'savings') return 'Tienes razon: preguntaste por una opcion sin cuota. La DINNERS Classic no tiene cuota anual el primer ano. Quieres que te cuente sus beneficios o que la compare con Gold?';
+        if (!empty($state['loan']['amount'])) return 'Tienes razon. Estabamos simulando un credito de ' . $this->credit->format((float) $state['loan']['amount']) . '. Quieres que repita las cuotas o que revisemos otro plazo?';
+        if ($state['profile']['interest'] === 'travel') return 'Tienes razon. Estabamos revisando opciones para viajes. Prefieres tasas, seguros, lounge o una comparacion?';
+        return 'Gracias por aclararlo. Dime que informacion quieres revisar y continio desde ese punto.';
+    }
+
+    private function repeatLastAnswer(array $state): string {
+        for ($index = count($state['history']) - 1; $index >= 0; $index--) {
+            if (($state['history'][$index]['role'] ?? '') === 'assistant') return 'Claro, te lo repito: ' . $state['history'][$index]['content'];
+        }
+        return 'Claro. Que informacion quieres que repita: tasas, beneficios, cuota o simulacion?';
+    }
+
+    private function contextForAnalysis(array $state): array {
+        $recent = array_slice($state['history'], -8);
+        $turns = [];
+        foreach ($recent as $turn) {
+            $turns[] = ['role' => $turn['role'] ?? 'user', 'content' => $this->redact((string) ($turn['content'] ?? ''))];
+        }
+        return ['summary' => $state['summary'], 'stage' => $state['stage'], 'profile' => $state['profile'], 'loan' => $state['loan'], 'selected_card' => $state['application']['card'], 'pending_action' => $state['pending_action'], 'recent_turns' => $turns];
+    }
+
+    private function redact(string $value): string {
+        return preg_replace(['/\b\d{8}\b/', '/\b9\d{8}\b/', '/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i'], ['[DNI]', '[CELULAR]', '[EMAIL]'], $value);
     }
 
     private function summary(array $state): string {

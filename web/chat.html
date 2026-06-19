@@ -55,8 +55,14 @@
     const send = document.querySelector('#send');
     const status = document.querySelector('#status');
     const sessionKey = 'dinners_session_id';
-    let sessionId = localStorage.getItem(sessionKey) || crypto.randomUUID();
-    localStorage.setItem(sessionKey, sessionId);
+    const transcriptKey = 'dinners_transcript';
+    let transcript = loadTranscript();
+    let sessionId = localStorage.getItem(sessionKey);
+    if (!sessionId || transcript.length === 0) {
+      sessionId = crypto.randomUUID();
+      transcript = [];
+      localStorage.setItem(sessionKey, sessionId);
+    }
     let busy = false;
     function scrollToLatest() {
       const scroll = behavior => messages.scrollTo({ top: messages.scrollHeight, behavior });
@@ -67,13 +73,16 @@
       });
     }
     new ResizeObserver(scrollToLatest).observe(messages);
-    function addMessage(text, type) { const el=document.createElement('div'); el.className='message '+type; el.textContent=text; messages.append(el); scrollToLatest(); }
+    function loadTranscript() { try { const saved=JSON.parse(localStorage.getItem(transcriptKey)||'[]'); return Array.isArray(saved)?saved:[]; } catch { return []; } }
+    function protect(text) { return text.replace(/\b\d{8}\b|\b9\d{8}\b|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,'[dato protegido]'); }
+    function renderMessage(text, type) { const el=document.createElement('div'); el.className='message '+type; el.textContent=text; messages.append(el); }
+    function addMessage(text, type) { renderMessage(text,type); transcript.push({text:protect(text),type}); transcript=transcript.slice(-24); localStorage.setItem(transcriptKey,JSON.stringify(transcript)); scrollToLatest(); }
     function setStatus(stage) { const labels={new:'Información',informing:'Información verificada',discovery:'Explorando opciones',application:'Solicitud',completed:'Registro completo',closed:'Conversación cerrada',human_handoff:'Asesor humano'}; status.textContent=labels[stage]||'Información'; }
     async function sendMessage(text) { if (busy || !text) return; busy=true; send.disabled=true; addMessage(text,'user'); input.value=''; const typing=document.createElement('div'); typing.className='typing show'; typing.textContent='Carlos está escribiendo...'; messages.append(typing); scrollToLatest(); try { const r=await fetch(api,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_message:text,session_id:sessionId})}); const data=await r.json(); if(!data.ok) throw new Error(data.error||'Error'); typing.remove(); addMessage(data.response,'bot'); setStatus(data.state.stage); } catch(e) { typing.remove(); addMessage('No pude conectar en este momento. Inténtalo nuevamente en unos segundos.','bot'); } finally { busy=false; send.disabled=false; input.focus(); scrollToLatest(); } }
     form.addEventListener('submit', event=>{event.preventDefault(); sendMessage(input.value.trim());});
-    document.querySelector('#reset').addEventListener('click',()=>{ localStorage.removeItem(sessionKey); sessionId=crypto.randomUUID(); localStorage.setItem(sessionKey,sessionId); messages.replaceChildren(); setStatus('new'); welcome(); });
+    document.querySelector('#reset').addEventListener('click',()=>{ sessionId=crypto.randomUUID(); transcript=[]; localStorage.setItem(sessionKey,sessionId); localStorage.removeItem(transcriptKey); messages.replaceChildren(); setStatus('new'); welcome(); });
     function welcome(){ addMessage('Hola, soy Carlos de DINNERS. Puedo explicarte los beneficios de nuestras tarjetas y ayudarte a elegir solo si te interesa. ¿Buscas restaurantes, viajes o una opción sin cuota el primer año?','bot'); }
-    welcome();
+    if (transcript.length) { transcript.forEach(item=>renderMessage(item.text,item.type)); scrollToLatest(); } else { welcome(); }
   </script>
 </body>
 </html>
