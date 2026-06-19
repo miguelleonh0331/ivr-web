@@ -1,0 +1,13 @@
+# Configuracion local y secretos
+config.md
+.env
+.env.*
+!.env.example
+
+# Datos de ejecucion
+datos_clientes/
+*.log
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
