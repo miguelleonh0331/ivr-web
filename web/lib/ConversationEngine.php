@@ -165,15 +165,17 @@ class ConversationEngine {
     }
 
     private function continueApplication(array &$state, string $message): string {
-        if (!$state['application']['card']) return 'Excelente. Antes de iniciar, quieres Classic sin cuota el primer ano, Gold, Platinum o Black? Tambien puedo recomendarte una segun tus prioridades.';
+        $isLoan = !empty($state['loan']['amount']);
+        if (!$isLoan && !$state['application']['card']) return 'Excelente. Antes de iniciar, quieres Classic sin cuota el primer ano, Gold, Platinum o Black? Tambien puedo recomendarte una segun tus prioridades.';
+        $product = $isLoan ? 'credito de ' . $this->credit->format((float) $state['loan']['amount']) . ' a ' . ($state['loan']['term_months'] ?: 'plazo por definir') . ' meses' : 'DINNERS ' . $state['application']['card'];
         if (!$state['application']['dni'] && preg_match('/\b([0-8]\d{7})\b/', $message, $m)) $state['application']['dni'] = $m[1];
-        if (!$state['application']['dni']) return 'Para iniciar la preevaluacion de la DINNERS ' . $state['application']['card'] . ', necesito tu DNI de 8 digitos.';
+        if (!$state['application']['dni']) return 'Para iniciar la preevaluacion del ' . $product . ', necesito tu DNI de 8 digitos.';
         if (!$state['application']['phone'] && preg_match('/\b(9\d{8})\b/', $message, $m)) $state['application']['phone'] = $m[1];
         if (!$state['application']['phone']) return 'DNI registrado. Cual es tu celular de 9 digitos para contactarte?';
         if (!$state['application']['email'] && preg_match('/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i', $message, $m)) $state['application']['email'] = $m[0];
         if (!$state['application']['email']) return 'Casi listo. Cual es tu correo para enviarte la confirmacion de la preevaluacion?';
         $state['stage'] = 'completed';
-        return 'Listo. Tu interes por la DINNERS ' . $state['application']['card'] . ' quedo registrado. Recibiras la confirmacion de la preevaluacion en 24 a 48 horas.';
+        return 'Listo. Tu solicitud de ' . $product . ' quedo registrada. Recibiras la confirmacion de la preevaluacion en 24 a 48 horas.';
     }
 
     private function answerCreditLimit(array &$state): string {
@@ -191,7 +193,8 @@ class ConversationEngine {
         $term = $state['loan']['term_months'];
         if ($term) {
             $simulation = $this->credit->simulate((float) $amount, (int) $term);
-            return $this->simulationText($simulation);
+            $state['pending_action'] = 'start_application';
+            return $this->simulationText($simulation) . ' Si deseas iniciar la solicitud de este credito, responde "quiero solicitar".';
         }
         $options = [];
         foreach ($this->credit->terms() as $item) $options[] = $this->simulationText($this->credit->simulate((float) $amount, (int) $item['months']), false);

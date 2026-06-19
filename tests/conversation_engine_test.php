@@ -40,6 +40,10 @@ assertTrue(strpos($loan['response'], '6 meses') !== false, 'Debe ofrecer plazos 
 $loanTerm = $engine->reply($loanSession, '12 meses');
 assertTrue(strpos($loanTerm['response'], '12 meses:') !== false, 'Debe calcular la cuota del plazo solicitado.');
 
+$loanApplication = $engine->reply($loanSession, 'quiero solicitar');
+assertTrue($loanApplication['state']['stage'] === 'application', 'Debe iniciar solicitud despues de confirmar la simulacion.');
+assertTrue(strpos($loanApplication['response'], 'S/ 10,000.00') !== false, 'Debe pedir DNI para el credito simulado.');
+
 $infoSession = 'info_' . uniqid('', true);
 $engine->reply($infoSession, 'viajes');
 $engine->reply($infoSession, 'por placer');
