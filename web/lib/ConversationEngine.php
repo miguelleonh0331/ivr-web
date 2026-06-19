@@ -34,6 +34,9 @@ class ConversationEngine {
             $reply = $this->repairContext($state, $analysis);
         } elseif (in_array('repeat_request', $analysis['intents'], true)) {
             $reply = $this->repeatLastAnswer($state);
+        } elseif ($this->isVagueAffirmation($message, $state)) {
+            $state['stage'] = 'discovery';
+            $reply = 'Claro. DINNERS puede ayudarte a acumular beneficios en restaurantes, viajes y compras diarias. Para orientarte bien, que te interesa mas: ahorrar en cuota, viajar o disfrutar beneficios en restaurantes?';
         } elseif (in_array('request_human', $analysis['intents'], true) && $this->isExplicitHumanRequest($message)) {
             $state['stage'] = 'human_handoff';
             $reply = 'Claro. Registrare que prefieres continuar con un asesor humano. Mientras tanto, puedo responder cualquier consulta puntual del producto.';
@@ -169,6 +172,11 @@ class ConversationEngine {
 
     private function isSavingsRequest(array $analysis): bool {
         return ($analysis['entities']['interest'] ?? null) === 'savings';
+    }
+
+    private function isVagueAffirmation(string $message, array $state): bool {
+        if ($state['profile']['interest'] || $state['loan']['amount'] || $state['application']['card']) return false;
+        return (bool) preg_match('/^\s*(si|claro|ok|dale)(?:\s*,?\s*(dime|cuentame|explicame)\s*(mas)?)?\s*[.!?]*\s*$/iu', $message);
     }
 
     private function isRecommendedCardSelection(array $state, array $analysis, string $message): bool {

@@ -59,6 +59,7 @@ assertTrue($infoAfterSelection['state']['stage'] === 'informing', 'Una pregunta 
 $naturalSession = 'natural_' . uniqid('', true);
 $more = $engine->reply($naturalSession, 'si dime mas');
 assertTrue($more['state']['profile']['travel_purpose'] === null, 'Una confirmacion vaga no debe inventar viajes por placer.');
+assertTrue(strpos($more['response'], 'DINNERS puede ayudarte') !== false, 'Una confirmacion vaga debe abrir una explicacion natural.');
 
 $savings = $engine->reply($naturalSession, 'quiero una opcion sin cuotas');
 assertTrue(strpos($savings['response'], 'Classic') !== false, 'Sin cuota debe orientar a Classic.');
