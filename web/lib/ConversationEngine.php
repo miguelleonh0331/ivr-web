@@ -42,6 +42,7 @@ class ConversationEngine {
             $reply = 'No hay problema. Podemos dejar la solicitud para otro momento. Que informacion te gustaria revisar antes de decidir?';
         } elseif (in_array('start_application', $analysis['intents'], true) || $state['stage'] === 'application') {
             $state['stage'] = 'application';
+            if (!empty($analysis['entities']['card'])) $state['application']['card'] = $analysis['entities']['card'];
             $reply = $this->continueApplication($state, $message);
         } elseif (in_array('compare_options', $analysis['intents'], true)) {
             $state['stage'] = 'recommending';
@@ -82,7 +83,6 @@ class ConversationEngine {
 
     private function mergeMemory(array &$state, array $entities): void {
         foreach (['interest', 'travel_purpose'] as $field) if (!empty($entities[$field])) $state['profile'][$field] = $entities[$field];
-        if (!empty($entities['card'])) $state['application']['card'] = $entities['card'];
     }
 
     private function answerRates(array &$state): string {
